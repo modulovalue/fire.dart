@@ -1,3 +1,5 @@
+// ignore_for_file: unnecessary_final
+
 import 'dart:async';
 import 'dart:io'
     show
@@ -16,8 +18,6 @@ import 'package:path/path.dart' as path;
 import 'package:watcher/watcher.dart' show DirectoryWatcher;
 
 // TODO finish building a testsuite.
-// Run this command to active fire locally:
-// > dart pub global activate fire.dart --source=path
 Future<void> run_fire({
   required final String file_path,
   required final String output_path,
@@ -53,31 +53,36 @@ Future<void> run_fire({
   }) async {
     Future<bool> _restart() async {
       try {
-        final result = await client.compile(
-          invalidated.toList(),
-        );
-        // Note calling client.reject seems to never work properly.
-        // Calling 'accept' followed by a 'reset' seem to always
-        // work correctly.
-        client.accept();
-        client.reset();
-        invalidated.clear();
-        if (result.dillOutput == null) {
-          // It's not clear when this will happen.
-          output.output_string("> no compilation result, rejecting.");
-          return false;
-        } else {
-          if (result.errorCount > 0) {
-            output.output_string("> ❌ compiled with " +
-                result.errorCount.toString() +
-                " error(s).");
-            output.output_compiler_output(result.compilerOutputLines);
+        if (invalidated.isNotEmpty) {
+          final result = await client.compile(
+            invalidated.toList(),
+          );
+          // Note calling client.reject seems to never work properly.
+          // Calling 'accept' followed by a 'reset' seem to always
+          // work correctly.
+          client.accept();
+          client.reset();
+          invalidated.clear();
+          if (result.dillOutput == null) {
+            // It's not clear when this will happen.
+            output.output_string("> no compilation result, rejecting.");
             return false;
           } else {
-            output.output_string("> ✅ compiled with no errors.");
-            output.output_compiler_output(result.compilerOutputLines);
-            return true;
+            if (result.errorCount > 0) {
+              output.output_string("> ❌ compiled with " +
+                  result.errorCount.toString() +
+                  " error(s).");
+              output.output_compiler_output(result.compilerOutputLines);
+              return false;
+            } else {
+              output.output_string("> ✅ compiled with no errors.");
+              output.output_compiler_output(result.compilerOutputLines);
+              return true;
+            }
           }
+        } else {
+          output.output_string("> Nothing invalidated, no need to recompile.");
+          return true;
         }
       } on Object catch (error, stack_trace) {
         // reject throws if a compilation failed.
@@ -163,14 +168,14 @@ Future<void> run_fire({
             case AutoRestartMode.none:
               break;
             case AutoRestartMode.on_entry_changed:
-              if (file_path == event.path) {
+              // if (file_path == event.path) {
                 unawaited(clear_restart(name: "auto restarting"));
-              } else {
+              // } else {
                 // We stay on the safe side and only restart on
                 // changes to the main script.
                 // A restart on any unfiltered change could cascade into
                 // infinite loops and other weird unexpected behaviors.
-              }
+              // }
               break;
           }
         }
@@ -273,10 +278,10 @@ Future<void> run_fire({
         switch (auto_restart_mode) {
           case AutoRestartMode.none:
             auto_restart_mode = AutoRestartMode.on_entry_changed;
-            output.output_string("> Auto restart was enabled.");
+            output.output_string("> You have successfully enabled Auto restart.");
             break;
           case AutoRestartMode.on_entry_changed:
-            output.output_string("> Auto restart is already enabled.");
+            output.output_string("> You have tried to enable Auto restart, but it was already enabled.");
             break;
         }
         break;
@@ -286,11 +291,11 @@ Future<void> run_fire({
         // give each command idempotency which improves UX.
         switch (auto_restart_mode) {
           case AutoRestartMode.none:
-            output.output_string("> Auto restart is already disabled.");
+            output.output_string("> You have tried to disable Auto restart, but it was already disabled.");
             break;
           case AutoRestartMode.on_entry_changed:
             auto_restart_mode = AutoRestartMode.none;
-            output.output_string("> Auto restart was disabled.");
+            output.output_string("> You have successfully disabled Auto restart.");
             break;
         }
         break;
@@ -322,27 +327,34 @@ Future<void> run_fire({
   }
 }
 
-abstract class FireOutputDelegate {
+class FireOutputDelegate {
   /// For warnings or informative messages.
-  void output_string(
-    final String str,
-  );
+  final void Function(
+    String str,
+  ) output_string;
 
   /// For caught errors.
-  void output_error(
-    final Object payload,
-    final StackTrace stack_trace,
-  );
+  final void Function(
+    Object payload,
+    StackTrace stack_trace,
+  ) output_error;
 
   /// For compiler output.
-  void output_compiler_output(
-    final Iterable<String> values,
-  );
+  final void Function(
+    Iterable<String> values,
+  ) output_compiler_output;
 
   /// For [Process] output.
-  void redirect_process(
-    final ProcessResult result,
-  );
+  final void Function(
+    ProcessResult result,
+  ) redirect_process;
+
+  FireOutputDelegate({
+    required final this.output_string,
+    required final this.output_error,
+    required final this.output_compiler_output,
+    required final this.redirect_process,
+  });
 }
 
 // region internal

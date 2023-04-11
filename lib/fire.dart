@@ -25,6 +25,7 @@ Future<void> run_fire({
   required final List<String> args,
   required final FireOutputDelegate output,
 }) async {
+  bool first_run = true;
   final file_path_file = File(file_path);
   final root = _find(
     file: file_path_file,
@@ -53,7 +54,7 @@ Future<void> run_fire({
   }) async {
     Future<bool> _restart() async {
       try {
-        if (invalidated.isNotEmpty) {
+        Future<bool> invalidate() async {
           final result = await client.compile(
             invalidated.toList(),
           );
@@ -80,9 +81,19 @@ Future<void> run_fire({
               return true;
             }
           }
+        }
+
+        if (first_run) {
+          first_run = false;
+          return invalidate();
         } else {
-          output.output_string("> Nothing invalidated, no need to recompile.");
-          return true;
+          if (invalidated.isNotEmpty) {
+            return invalidate();
+          } else {
+            output.output_string("> Nothing invalidated, no need to recompile.");
+            return true;
+          }
+
         }
       } on Object catch (error, stack_trace) {
         // reject throws if a compilation failed.
